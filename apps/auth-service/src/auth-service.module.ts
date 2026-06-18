@@ -17,7 +17,7 @@ import { AuthController } from './interface/controllers/auth.controller';
         port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
         username: process.env.POSTGRES_USER ?? 'wecare',
         password: process.env.POSTGRES_PASSWORD ?? 'wecare_secret',
-        database: process.env.AUTH_DB_NAME ?? 'wecare_auth',
+        database: process.env.POSTGRES_DB ?? 'wecare',
         entities: [UserOrmEntity],
         synchronize: true, // dev only
       }),

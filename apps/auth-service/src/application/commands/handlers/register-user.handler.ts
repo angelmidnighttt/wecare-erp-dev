@@ -1,5 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler, EventBus } from '@nestjs/cqrs';
+import { JwtService } from '@nestjs/jwt';
 import { RegisterUserCommand } from '../register-user.command';
 import { User } from '../../../domain/entities/user.entity';
 import { UserRegisteredEvent } from '../../../domain/events/user-registered.event';
@@ -14,6 +15,7 @@ export class RegisterUserHandler
 {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    private readonly jwt: JwtService,
     private readonly eventBus: EventBus,
   ) {}
 
@@ -25,6 +27,9 @@ export class RegisterUserHandler
     await this.users.save(user);
     this.eventBus.publish(new UserRegisteredEvent(id, command.email));
 
-    return { id, email: command.email };
+    // Auto-login: issue a JWT right after registration.
+    const accessToken = this.jwt.sign({ sub: id, email: command.email });
+
+    return { accessToken, user: { id, email: command.email } };
   }
 }

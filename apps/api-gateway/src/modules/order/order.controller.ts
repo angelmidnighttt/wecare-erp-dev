@@ -1,7 +1,19 @@
-import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ORDER_SERVICE, ORDER_PATTERNS } from '@app/shared';
+import { JwtAuthGuard, JwtUser } from '../../common/jwt-auth.guard';
+import { CurrentUser } from '../../common/current-user.decorator';
 
+// Every order route is protected; the gateway forwards the verified userId.
+@UseGuards(JwtAuthGuard)
 @Controller('orders')
 export class OrderController {
   constructor(
@@ -9,8 +21,12 @@ export class OrderController {
   ) {}
 
   @Post()
-  create(@Body() body: { customerId: string; total: number }) {
-    return this.orderClient.send(ORDER_PATTERNS.CREATE, body);
+  create(@CurrentUser() user: JwtUser, @Body() body: { total: number }) {
+    // customerId comes from the trusted JWT, not the request body.
+    return this.orderClient.send(ORDER_PATTERNS.CREATE, {
+      customerId: user.sub,
+      total: body.total,
+    });
   }
 
   @Get(':id')

@@ -1,19 +1,19 @@
 # WeCare ERP — NestJS Microservices (DDD + CQRS)
 
-Monorepo NestJS gồm 3 ứng dụng giao tiếp qua **Redis transport**, mỗi service
-dùng database PostgreSQL riêng (database-per-service). Auth & Order service được
-tổ chức theo **Domain-Driven Design + CQRS**.
+Monorepo NestJS gồm 3 ứng dụng giao tiếp qua **Redis transport**, tất cả service
+dùng chung **một database PostgreSQL** (`wecare`, mỗi service quản lý bảng riêng).
+Auth & Order service được tổ chức theo **Domain-Driven Design + CQRS**.
 
 ```
-┌──────────────┐      Redis       ┌────────────────┐   PostgreSQL
-│ api-gateway  │  ─────────────▶  │ auth-service   │ ───▶ wecare_auth
-│  (HTTP :3000)│                  ├────────────────┤
-│              │  ─────────────▶  │ order-service  │ ───▶ wecare_order
+┌──────────────┐      Redis       ┌────────────────┐
+│ api-gateway  │  ─────────────▶  │ auth-service   │ ──┐   PostgreSQL
+│  (HTTP :3000)│                  ├────────────────┤   ├─▶ wecare
+│              │  ─────────────▶  │ order-service  │ ──┘   (users, orders)
 └──────────────┘                  └────────────────┘
                                                    │
                           CDC (logical replication)│
                                                    ▼
-        wecare_order ─▶ Debezium ─▶ Kafka ─▶ ClickHouse (wecare_analytics.orders)
+            wecare.orders ─▶ Debezium ─▶ Kafka ─▶ ClickHouse (wecare_analytics.orders)
 ```
 
 ## Cấu trúc thư mục
@@ -41,7 +41,6 @@ libs/
 
 docker/
   Dockerfile              # multi-stage, build cho từng APP_NAME
-  postgres/init-multiple-dbs.sh   # tạo nhiều database lúc khởi tạo
   debezium/order-connector.json   # cấu hình Debezium PostgreSQL connector
   clickhouse/init.sql             # Kafka engine + MV + bảng đích (CDC sink)
 docker-compose.yml        # postgres + redis + 3 services + kafka + debezium + clickhouse
@@ -64,7 +63,7 @@ docker compose up --build
 ```
 
 - API Gateway: <http://localhost:3000/api>
-- PostgreSQL: `localhost:5432` (2 DB: `wecare_auth`, `wecare_order`)
+- PostgreSQL: `localhost:5432` (DB chung: `wecare`)
 - Redis: `localhost:6379`
 
 ## Chạy local (dev)
@@ -80,25 +79,57 @@ npm run start:auth
 npm run start:order
 ```
 
+## Xác thực JWT
+
+**Auth-service ký** JWT (login/register), **API Gateway verify** chữ ký một lần ở
+"cửa ngõ" rồi forward `userId` (claim `sub`) xuống service qua payload. Service
+trong mạng nội bộ tin danh tính do gateway cung cấp — không tự verify lại.
+
+```
+register/login ─▶ auth-service (JwtService.sign) ─▶ accessToken
+request có Bearer token ─▶ Gateway JwtAuthGuard (verify) ─▶ req.user ─▶ service
+```
+
+| Route                     | Bảo vệ | Ghi chú                              |
+|---------------------------|--------|--------------------------------------|
+| `POST /api/auth/register` | public | trả `accessToken` (auto-login)       |
+| `POST /api/auth/login`    | public | trả `accessToken`                    |
+| `GET  /api/auth/me`       | JWT    | lấy user từ `sub` trong token        |
+| `POST /api/orders`        | JWT    | `customerId` lấy từ token, không từ body |
+| `GET  /api/orders/:id`    | JWT    |                                      |
+
+> `JWT_SECRET` được chia sẻ giữa auth-service (ký) và gateway (verify) qua `.env`.
+
 ## Thử nhanh các endpoint
 
 ```bash
-# Hello world
+# Hello world (public)
 curl http://localhost:3000/api
 
-# Auth (gateway → Redis → auth-service → CQRS command)
+# 1) Đăng ký → nhận accessToken
 curl -X POST http://localhost:3000/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"a@b.com","password":"123456"}'
+# => {"accessToken":"eyJ...","user":{...}}
 
-# Order
-curl -X POST http://localhost:3000/api/orders \
+# 2) Đăng nhập (nếu đã có tài khoản)
+curl -X POST http://localhost:3000/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"customerId":"user_1","total":99000}'
+  -d '{"email":"a@b.com","password":"123456"}'
+
+# 3) Gọi route được bảo vệ — gắn Bearer token
+TOKEN="<accessToken vừa nhận>"
+curl http://localhost:3000/api/auth/me -H "Authorization: Bearer $TOKEN"
+
+# 4) Tạo order (customerId tự lấy từ token)
+curl -X POST http://localhost:3000/api/orders \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"total":99000}'
 ```
 
-> Lưu ý: phần handler hiện ở mức **Hello World** (chưa hash password, chưa xử lý
-> nghiệp vụ thật) — chỉ dựng sẵn khung DDD + CQRS để bạn điền logic.
+> Lưu ý: phần nghiệp vụ vẫn ở mức **Hello World** — JWT đã thật (ký/verify chuẩn),
+> nhưng password mới hash giả `hashed(...)`; production hãy thay bằng `bcrypt`.
 
 ## CDC: đồng bộ PostgreSQL → ClickHouse (Debezium + Kafka)
 
@@ -107,7 +138,7 @@ Pipeline Change-Data-Capture cho bảng `orders`:
 ```
 Postgres (wal_level=logical)
   └─ Debezium PostgreSQL connector (Kafka Connect :8083)
-       └─ Kafka topic: wecare_order.public.orders
+       └─ Kafka topic: wecare.public.orders
             └─ ClickHouse Kafka engine table
                  └─ Materialized View → wecare_analytics.orders (ReplacingMergeTree)
 ```
@@ -148,9 +179,10 @@ docker exec -it wecare-clickhouse clickhouse-client \
   --query "SELECT * FROM wecare_analytics.orders FINAL"
 ```
 
-> Muốn sync thêm bảng/khác service (vd `users` của auth): copy
-> `docker/debezium/order-connector.json`, đổi `database.dbname`, `table.include.list`,
-> `slot.name`, `topic.prefix`, rồi tạo bảng Kafka engine + MV tương ứng trong ClickHouse.
+> Muốn sync thêm bảng (vd `users` của auth): copy
+> `docker/debezium/order-connector.json`, giữ nguyên `database.dbname=wecare`, đổi
+> `table.include.list`, `slot.name`, `publication.name`, `topic.prefix`, rồi tạo bảng
+> Kafka engine + MV tương ứng trong ClickHouse.
 >
 > `init.sql` của ClickHouse chỉ chạy **lần đầu** khi volume còn trống — nếu sửa file
 > này sau đó, chạy lại bằng `docker compose down -v` hoặc apply SQL thủ công.

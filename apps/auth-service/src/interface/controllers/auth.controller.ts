@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { AUTH_PATTERNS } from '@app/shared';
 import { RegisterUserCommand } from '../../application/commands/register-user.command';
+import { LoginCommand } from '../../application/commands/login.command';
 import { GetUserQuery } from '../../application/queries/get-user.query';
 
 /**
@@ -21,6 +22,11 @@ export class AuthController {
     return this.commandBus.execute(
       new RegisterUserCommand(data.email, data.password),
     );
+  }
+
+  @MessagePattern(AUTH_PATTERNS.LOGIN)
+  login(@Payload() data: { email: string; password: string }) {
+    return this.commandBus.execute(new LoginCommand(data.email, data.password));
   }
 
   @MessagePattern(AUTH_PATTERNS.GET_USER)

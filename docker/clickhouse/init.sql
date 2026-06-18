@@ -2,7 +2,7 @@
 -- ClickHouse CDC sink for the Order service.
 --
 -- Pipeline: postgres(orders) -> Debezium -> Kafka topic
---           "wecare_order.public.orders" -> Kafka engine table
+--           "wecare.public.orders" -> Kafka engine table
 --           -> materialized view -> ReplacingMergeTree target.
 --
 -- Debezium message (value.converter.schemas.enable=false) looks like:
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS wecare_analytics.kafka_orders_queue
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
-    kafka_topic_list = 'wecare_order.public.orders',
+    kafka_topic_list = 'wecare.public.orders',
     kafka_group_name = 'clickhouse_orders_sink',
     kafka_format = 'JSONAsString',
     kafka_num_consumers = 1,

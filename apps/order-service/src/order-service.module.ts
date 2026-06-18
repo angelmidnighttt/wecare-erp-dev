@@ -17,7 +17,7 @@ import { OrderController } from './interface/controllers/order.controller';
         port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
         username: process.env.POSTGRES_USER ?? 'wecare',
         password: process.env.POSTGRES_PASSWORD ?? 'wecare_secret',
-        database: process.env.ORDER_DB_NAME ?? 'wecare_order',
+        database: process.env.POSTGRES_DB ?? 'wecare',
         entities: [OrderOrmEntity],
         synchronize: true, // dev only
       }),

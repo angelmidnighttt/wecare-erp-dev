@@ -26,4 +26,10 @@ export class TypeOrmUserRepository implements UserRepository {
     if (!row) return null;
     return new User(row.id, Email.create(row.email), row.passwordHash);
   }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const row = await this.repo.findOne({ where: { email: email.toLowerCase() } });
+    if (!row) return null;
+    return new User(row.id, Email.create(row.email), row.passwordHash);
+  }
 }
