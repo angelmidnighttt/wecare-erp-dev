@@ -1,0 +1,22 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "tasks.max": "1",
+  "database.hostname": "postgres",
+  "database.port": "5432",
+  "database.user": "wecare",
+  "database.password": "wecare_secret",
+  "database.dbname": "wecare_order",
+  "topic.prefix": "wecare_order",
+  "schema.include.list": "public",
+  "table.include.list": "public.orders",
+  "plugin.name": "pgoutput",
+  "slot.name": "wecare_order_slot",
+  "publication.name": "wecare_order_pub",
+  "publication.autocreate.mode": "filtered",
+  "snapshot.mode": "initial",
+  "tombstones.on.delete": "false",
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "false",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}

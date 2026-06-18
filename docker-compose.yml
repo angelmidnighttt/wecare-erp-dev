@@ -1,0 +1,237 @@
+services:
+  # ===================== Infrastructure =====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: wecare-postgres
+    restart: unless-stopped
+    # Logical replication is required by Debezium (CDC).
+    command:
+      - 'postgres'
+      - '-c'
+      - 'wal_level=logical'
+      - '-c'
+      - 'max_wal_senders=10'
+      - '-c'
+      - 'max_replication_slots=10'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wecare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wecare_secret}
+      # Multiple databases are created by the init script below.
+      POSTGRES_MULTIPLE_DATABASES: ${AUTH_DB_NAME:-wecare_auth},${ORDER_DB_NAME:-wecare_order}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-wecare}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wecare-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: wecare-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wecare-net
+
+  # ===================== Services =====================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: api-gateway
+    container_name: wecare-api-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      POSTGRES_HOST: postgres
+    ports:
+      - '${API_GATEWAY_PORT:-3000}:3000'
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wecare-net
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: auth-service
+    container_name: wecare-auth-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wecare-net
+
+  order-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: order-service
+    container_name: wecare-order-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wecare-net
+
+  # ===================== CDC: Postgres -> Debezium -> Kafka -> ClickHouse =====================
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: wecare-kafka
+    restart: unless-stopped
+    environment:
+      # --- KRaft (no Zookeeper) single-node ---
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ['CMD', 'kafka-topics', '--bootstrap-server', 'localhost:9092', '--list']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - wecare-net
+
+  connect:
+    image: quay.io/debezium/connect:2.7
+    container_name: wecare-debezium-connect
+    restart: unless-stopped
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: wecare-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      # JSON without embedded schemas keeps ClickHouse parsing simple.
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: 'false'
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: 'false'
+    ports:
+      - '8083:8083'
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:8083/connectors || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - wecare-net
+
+  # One-shot job that registers the Debezium PostgreSQL connector (idempotent PUT).
+  connector-init:
+    image: curlimages/curl:8.8.0
+    container_name: wecare-connector-init
+    depends_on:
+      connect:
+        condition: service_healthy
+    volumes:
+      - ./docker/debezium/order-connector.json:/config.json:ro
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        echo "Registering Debezium order connector...";
+        until curl -sf -X PUT -H "Content-Type: application/json" \
+          --data @/config.json \
+          http://connect:8083/connectors/wecare-order-connector/config; do
+          echo "connect not ready / table missing, retry in 5s..."; sleep 5;
+        done;
+        echo "";
+        echo "Debezium connector registered.";
+    restart: 'no'
+    networks:
+      - wecare-net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: wecare-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-wecare}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-wecare_secret}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-wecare_analytics}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - '8123:8123' # HTTP
+      - '9000:9000' # native
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8123/ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wecare-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  clickhouse_data:
+
+networks:
+  wecare-net:
+    driver: bridge
