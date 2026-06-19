@@ -12,7 +12,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AuthServiceModule, { bufferLogs: true });
   app.useLogger(app.get(PinoLogger));
 
-  app.connectMicroservice<MicroserviceOptions>(redisClientOptions());
+  // inheritAppConfig: so the global metrics interceptor (APP_INTERCEPTOR) also
+  // wraps @MessagePattern handlers — otherwise RPC metrics never record.
+  app.connectMicroservice<MicroserviceOptions>(redisClientOptions(), {
+    inheritAppConfig: true,
+  });
 
   await app.startAllMicroservices();
 
