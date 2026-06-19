@@ -1,0 +1,23 @@
+# Auto-provisioned Grafana datasources (loaded on container start).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+
+  # Elasticsearch holds the structured application logs (the "tracking" side).
+  - name: Elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    database: wecare-logs
+    jsonData:
+      index: wecare-logs
+      # Pino emits the timestamp in the `time` field (ISO8601), not `@timestamp`.
+      timeField: 'time'
+      esVersion: '8.0.0'
+    editable: true

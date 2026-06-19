@@ -1,0 +1,10 @@
+{
+  "//": "Used at RUNTIME by `node -r tsconfig-paths/register` so the compiled JS can resolve the @app/shared alias to the emitted lib under dist/. Selected via the TS_NODE_PROJECT env var.",
+  "compilerOptions": {
+    "baseUrl": "./dist",
+    "paths": {
+      "@app/shared": ["libs/shared/src"],
+      "@app/shared/*": ["libs/shared/src/*"]
+    }
+  }
+}

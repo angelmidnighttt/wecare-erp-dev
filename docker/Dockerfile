@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY tsconfig*.json nest-cli.json ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 
 COPY apps ./apps
 COPY libs ./libs
@@ -18,10 +18,15 @@ ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 WORKDIR /app
 
+# Runtime tsconfig lets `tsconfig-paths/register` resolve the @app/shared alias
+# against the compiled lib under dist/.
+ENV TS_NODE_PROJECT=/app/tsconfig.runtime.json
+
 COPY package*.json ./
-RUN npm install --omit=dev
+COPY tsconfig.runtime.json ./
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 
 # APP_NAME is baked in so the same image definition serves every service.
-CMD ["sh", "-c", "node dist/apps/${APP_NAME}/main"]
+CMD ["sh", "-c", "node -r tsconfig-paths/register dist/apps/${APP_NAME}/src/main"]
