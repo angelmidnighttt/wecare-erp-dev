@@ -12,3 +12,11 @@ export const ORDER_PATTERNS = {
   CREATE: 'order.create',
   GET_ORDER: 'order.get_order',
 } as const;
+
+export const PRODUCT_PATTERNS = {
+  CREATE: 'product.create',
+  GET_PRODUCT: 'product.get_product',
+  LIST: 'product.list',
+  UPDATE: 'product.update',
+  DELETE: 'product.delete',
+} as const;

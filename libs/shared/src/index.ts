@@ -2,6 +2,9 @@
 export * from './constants/services.constant';
 export * from './constants/message-patterns.constant';
 
+// DTOs (validated with class-validator / transformed with class-transformer)
+export * from './dto';
+
 // Config
 export * from './config/redis-client.options';
 export * from './config/postgres.config';
