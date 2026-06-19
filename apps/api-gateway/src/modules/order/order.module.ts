@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '@nestjs/microservices';
-import { ORDER_SERVICE, redisClientOptions } from '@app/shared';
+import { ORDER_SERVICE, tcpClientOptions } from '@app/shared';
 import { OrderController } from './order.controller';
 
 @Module({
@@ -8,7 +8,7 @@ import { OrderController } from './order.controller';
     ClientsModule.registerAsync([
       {
         name: ORDER_SERVICE,
-        useFactory: redisClientOptions,
+        useFactory: () => tcpClientOptions('ORDER'),
       },
     ]),
   ],

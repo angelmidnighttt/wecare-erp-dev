@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '@nestjs/microservices';
-import { AUTH_SERVICE, redisClientOptions } from '@app/shared';
+import { AUTH_SERVICE, tcpClientOptions } from '@app/shared';
 import { AuthController } from './auth.controller';
 
 @Module({
@@ -8,7 +8,7 @@ import { AuthController } from './auth.controller';
     ClientsModule.registerAsync([
       {
         name: AUTH_SERVICE,
-        useFactory: redisClientOptions,
+        useFactory: () => tcpClientOptions('AUTH'),
       },
     ]),
   ],

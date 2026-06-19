@@ -6,6 +6,7 @@ export * from './constants/message-patterns.constant';
 export * from './dto';
 
 // Config
+export * from './config/tcp-client.options';
 export * from './config/redis-client.options';
 export * from './config/postgres.config';
 export * from './config/elasticsearch.config';

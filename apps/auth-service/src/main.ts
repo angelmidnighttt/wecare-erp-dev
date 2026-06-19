@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions } from '@nestjs/microservices';
 import { Logger as PinoLogger } from 'nestjs-pino';
-import { redisClientOptions } from '@app/shared';
+import { tcpServerOptions } from '@app/shared';
 import { AuthServiceModule } from './auth-service.module';
 
 /**
- * Hybrid app: it consumes Redis messages (business transport) AND exposes a
- * small HTTP server so Prometheus can scrape `/metrics` (and `/health`).
+ * Hybrid app: it serves synchronous TCP requests (business transport) AND
+ * exposes a small HTTP server so Prometheus can scrape `/metrics` (`/health`).
  */
 async function bootstrap() {
   const app = await NestFactory.create(AuthServiceModule, { bufferLogs: true });
@@ -14,7 +14,7 @@ async function bootstrap() {
 
   // inheritAppConfig: so the global metrics interceptor (APP_INTERCEPTOR) also
   // wraps @MessagePattern handlers — otherwise RPC metrics never record.
-  app.connectMicroservice<MicroserviceOptions>(redisClientOptions(), {
+  app.connectMicroservice<MicroserviceOptions>(tcpServerOptions('AUTH'), {
     inheritAppConfig: true,
   });
 
@@ -26,7 +26,7 @@ async function bootstrap() {
   app
     .get(PinoLogger)
     .log(
-      `🔐 Auth Service listening (Redis transport) — metrics on :${httpPort}/metrics`,
+      `🔐 Auth Service listening (TCP transport) — metrics on :${httpPort}/metrics`,
       'Bootstrap',
     );
 }
