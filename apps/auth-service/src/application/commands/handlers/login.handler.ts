@@ -8,11 +8,16 @@ import {
   USER_REPOSITORY,
   UserRepository,
 } from '../../../domain/repositories/user.repository';
+import {
+  PASSWORD_HASHER,
+  PasswordHasher,
+} from '../../../domain/services/password-hasher';
 
 @CommandHandler(LoginCommand)
 export class LoginHandler implements ICommandHandler<LoginCommand> {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasher,
     private readonly jwt: JwtService,
     @InjectPinoLogger(LoginHandler.name) private readonly logger: PinoLogger,
   ) {}
@@ -21,8 +26,9 @@ export class LoginHandler implements ICommandHandler<LoginCommand> {
     this.logger.info({ email: command.email }, 'Login attempt');
     const user = await this.users.findByEmail(command.email);
 
-    // Hello-world hashing — replace with bcrypt.compare in real code.
-    if (!user || user.getPasswordHash() !== `hashed(${command.password})`) {
+    const passwordOk =
+      user && (await this.hasher.compare(command.password, user.getPasswordHash()));
+    if (!passwordOk) {
       this.logger.warn({ email: command.email }, 'Login failed: invalid credentials');
       throw new RpcException('Invalid credentials');
     }

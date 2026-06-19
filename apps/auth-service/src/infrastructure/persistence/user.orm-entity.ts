@@ -6,11 +6,11 @@ import { Column, Entity, PrimaryColumn } from 'typeorm';
 @Entity({ name: 'users' })
 export class UserOrmEntity {
   @PrimaryColumn()
-  id: string;
+  id!: string;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column()
-  passwordHash: string;
+  passwordHash!: string;
 }
