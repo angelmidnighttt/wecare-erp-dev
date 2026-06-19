@@ -64,6 +64,7 @@ services:
       # TCP transport — reach each microservice by its container name.
       AUTH_SERVICE_TCP_HOST: auth-service
       ORDER_SERVICE_TCP_HOST: order-service
+      PRODUCT_SERVICE_TCP_HOST: product-service
     ports:
       - '${API_GATEWAY_PORT:-3000}:3000'
     depends_on:
@@ -120,6 +121,34 @@ services:
       ORDER_SERVICE_TCP_PORT: 4002 # business transport (TCP listener)
     ports:
       - '${ORDER_SERVICE_HTTP_PORT:-3002}:3002' # Prometheus /metrics
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - wecare-net
+
+  product-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: product-service
+    container_name: wecare-product-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      POSTGRES_HOST: postgres
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+      PRODUCT_SERVICE_HTTP_PORT: 3003
+      PRODUCT_SERVICE_TCP_PORT: 4003 # business transport (TCP listener)
+    ports:
+      - '${PRODUCT_SERVICE_HTTP_PORT:-3003}:3003' # Prometheus /metrics
     depends_on:
       postgres:
         condition: service_healthy

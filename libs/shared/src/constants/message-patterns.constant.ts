@@ -15,8 +15,8 @@ export const ORDER_PATTERNS = {
 
 export const PRODUCT_PATTERNS = {
   CREATE: 'product.create',
-  GET_PRODUCT: 'product.get_product',
-  LIST: 'product.list',
   UPDATE: 'product.update',
-  DELETE: 'product.delete',
+  ACTIVATE: 'product.activate',
+  DEACTIVATE: 'product.deactivate',
+  GET_PRODUCT: 'product.get_product',
 } as const;

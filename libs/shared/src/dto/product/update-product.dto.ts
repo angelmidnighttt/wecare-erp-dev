@@ -2,15 +2,14 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
-  IsPositive,
   IsString,
   MaxLength,
   Min,
 } from 'class-validator';
 
 /**
- * Partial update — every field optional. Kept dependency-free (no PartialType)
- * so the shared lib doesn't pull in @nestjs/mapped-types.
+ * Partial update of a product (FR-1, edit). SKU is immutable — it is the
+ * product's business identity — so it is intentionally not editable here.
  */
 export class UpdateProductDto {
   @IsOptional()
@@ -22,21 +21,11 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  @MaxLength(64)
-  sku?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  description?: string;
-
-  @IsOptional()
-  @IsInt()
-  @IsPositive()
-  price?: number;
+  @MaxLength(32)
+  unit?: string;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  stock?: number;
+  defaultPrice?: number;
 }
